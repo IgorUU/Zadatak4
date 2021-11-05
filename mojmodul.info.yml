@@ -1,0 +1,5 @@
+name: Moj modul
+type: module
+description: Slanje maila nakon kreiranja kontenta.
+core_version_requirement: ^8 || ^9
+package: Custom

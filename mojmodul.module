@@ -1,0 +1,73 @@
+<?php
+
+use Drupal\Core\Mail\MailManagerInterface;
+use Drupal\Component\Utility\SafeMarkup;
+use Drupal\Component\Utility\Html;
+use Drupal\Core\Entity\EntityInterface;
+use Drupal\user\Entity\User;
+
+/**
+ * Implements hook_mail()
+ */
+
+function mojmodul_mail($key, &$message, $params) {
+    $options = array(
+        'langcode' => $message['langcode'],
+    );
+
+    switch($key) {
+        case 'salji_mejl':
+            $message['from'] = \Drupal::config('system.site')->get('mail');
+            $message['subject'] = t('Article created: @title', array('@title' => $params['node_title']), $options);
+            $message['body'][] = $params['message'];
+        break;
+    }
+}
+
+ /**
+  * Implements hook_entity_insert()
+  */
+function mojmodul_entity_insert(Drupal\Core\Entity\EntityInterface $entity) {
+
+    if ($entity->getEntityTypeId() !== 'node' || $entity->bundle() !== 'kontent') {
+        return;
+    }
+
+    $mailManager = \Drupal::service('plugin.manager.mail');
+    $module = 'mojmodul';
+    $key = 'salji_mejl';
+    $params['message'] = $entity->get('body')->value;
+    $params['node_title'] = $entity->label();
+    $uloge = [];
+    $roles = $entity->get('field_roles');
+    for($i = 0; $i < count($roles); $i++) {
+        array_push($uloge, $roles[$i]->target_id);          //U $uloge se nalaze role-ovi koji su izabrani u kontentu.
+    };
+    //dsm($uloge);
+    $langcode = \Drupal::currentUser()->getPreferredLangcode();
+    $send = true;
+    $query = \Drupal::entityQuery('user');
+    $korisnici = $query->execute();
+    $users = User::loadMultiple($korisnici);
+    // dsm($users[3]);
+    // dsm($users[1]->mail->value);
+    foreach ($users as $user) { 
+        // dsm($user);
+        if($user->mail !== NULL) {
+            foreach ($user->roles as $userRoles) {
+                // dsm($userRoles->target_id);
+                if (in_array($userRoles->target_id, $uloge)) {               //Ako se neki od role-ova korisnika poklapa sa izabranim role-ovima u kontentu
+                    $to = $user->mail->value;              //Mail usera koji ima role koji je izabran u našem kontentu.                
+                    $result = $mailManager->mail($module, $key, $to, $langcode, $params, NULL, $send);
+                    if ($result['result'] !== true) {
+                        \Drupal::messenger()->addMessage(t('There was a problem sending your message and it was not sent.'), 'error');
+                    } else {
+                        \Drupal::messenger()->addMessage(t('Your message has been sent.'));
+                        dsm($to);
+                        break;                          //Ako je poslat mail ovom korisniku - izađi iz petlje
+                    }        
+                }
+            }
+        }
+    }
+}
